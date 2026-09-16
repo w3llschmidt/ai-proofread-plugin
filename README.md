@@ -16,13 +16,17 @@ machine api.openai.com login apikey password <key>
 
 You need to create a `prompts.json` file in the `ai-proofread/prompts.json` under evolution user config directory. On linux it is `/.config/evolution/ai-proofread/prompts.json`.
 
-The `prompts.json` file should contain an array of prompts. Each prompt should have an id (show in menu and on toolbar combo box) and a text. The text is the prompt text sent to the ChatGPT.
+The `prompts.json` file should contain an array of prompts. Each prompt has a `name` (shown in the menu and toolbar), a `prompt` (sent as the system instruction), and an optional `model`. When `model` is omitted, the plugin uses `gpt-4o`.
 
 Example:
 
 ```json
 [
-    {"id": "proofread-1", "text": "You are a proofreader. Proofread the following text and return the corrected text."}
+    {
+        "name": "Proofread",
+        "model": "gpt-4o",
+        "prompt": "You are a proofreader. Proofread the following text and return the corrected text."
+    }
 ]
 ```
 

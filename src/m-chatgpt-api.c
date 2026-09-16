@@ -7,8 +7,13 @@
 #define CHATGPT_API_USER_AGENT "Evolution-AI-Proofread/" AI_PROOFREAD_VERSION " (" AI_PROOFREAD_URL ")"
 
 static const gchar *
-find_prompt_text(JsonArray *prompts, const gchar *prompt_id)
+find_prompt_text(JsonArray *prompts,
+                 const gchar *prompt_id,
+                 const gchar **model)
 {
+    if (model)
+        *model = "gpt-4o";
+
     guint length = json_array_get_length(prompts);
     // Strip "ai-proofread-" prefix from prompt_id
     const gchar *name = prompt_id;
@@ -19,6 +24,14 @@ find_prompt_text(JsonArray *prompts, const gchar *prompt_id)
     for (guint i = 0; i < length; i++) {
         JsonObject *prompt = json_array_get_object_element(prompts, i);
         if (g_strcmp0(json_object_get_string_member(prompt, "name"), name) == 0) {
+            if (model && json_object_has_member(prompt, "model")) {
+                const gchar *configured_model =
+                    json_object_get_string_member(prompt, "model");
+
+                if (configured_model && *configured_model)
+                    *model = configured_model;
+            }
+
             return json_object_get_string_member(prompt, "prompt");
         }
     }
@@ -39,20 +52,26 @@ m_chatgpt_proofread(const gchar *content,
     JsonNode *root;
     gchar *json_data;
     const gchar *prompt_text;
+    const gchar *model;
     gchar *response_text = NULL;
     
-    prompt_text = find_prompt_text(prompts, prompt_id);
+    prompt_text = find_prompt_text(prompts, prompt_id, &model);
     if (!prompt_text) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                    "Prompt not found for ID: %s", prompt_id);
         return NULL;
     }
 
+    const gchar *prompt_name = prompt_id;
+    if (g_str_has_prefix(prompt_name, "ai-proofread-"))
+        prompt_name += strlen("ai-proofread-");
+
+    g_debug("Using model: %s (%s)", model, prompt_name);
     // Build request JSON
     builder = json_builder_new();
     json_builder_begin_object(builder);
     json_builder_set_member_name(builder, "model");
-    json_builder_add_string_value(builder, "gpt-4o");
+    json_builder_add_string_value(builder, model);
     json_builder_set_member_name(builder, "messages");
     json_builder_begin_array(builder);
     
@@ -125,16 +144,18 @@ m_chatgpt_proofread(const gchar *content,
     if (SOUP_STATUS_IS_SUCCESSFUL(status_code)) {
         g_debug("HTTP request successful with status %d", status_code);
     } else {
-        const char *response_body = "";
+        gchar *response_body = NULL;
         if (response) {
             gsize length;
-            response_body = g_bytes_get_data(response, &length);
+            const gchar *response_data = g_bytes_get_data(response, &length);
+            response_body = g_strndup(response_data, length);
         }
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                     "HTTP request failed with status %d: %s. Response: %s",
                     status_code,
                     reason ? reason : "Unknown error",
-                    response_body);
+                    response_body ? response_body : "");
+        g_free(response_body);
         goto cleanup;
     }
 

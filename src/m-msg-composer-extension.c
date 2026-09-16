@@ -20,9 +20,37 @@ struct _MMsgComposerExtensionPrivate {
 
 struct ProofreadContext {
     EContentEditor *cnt_editor;
-    const gchar *prompt_id;
+    gchar *prompt_id;
     MMsgComposerExtension *extension;
 };
+
+static struct ProofreadContext *
+proofread_context_new(EContentEditor *cnt_editor,
+                      const gchar *prompt_id,
+                      MMsgComposerExtension *extension)
+{
+    struct ProofreadContext *context = g_new0(struct ProofreadContext, 1);
+
+    /* The content request completes asynchronously. Keep all objects and the
+     * prompt ID alive until its callback has run. */
+    context->cnt_editor = g_object_ref(cnt_editor);
+    context->prompt_id = g_strdup(prompt_id);
+    context->extension = g_object_ref(extension);
+
+    return context;
+}
+
+static void
+proofread_context_free(struct ProofreadContext *context)
+{
+    if (!context)
+        return;
+
+    g_clear_object(&context->cnt_editor);
+    g_clear_object(&context->extension);
+    g_free(context->prompt_id);
+    g_free(context);
+}
 
 G_DEFINE_DYNAMIC_TYPE_EXTENDED (MMsgComposerExtension, m_msg_composer_extension, E_TYPE_EXTENSION, 0,
 	G_ADD_PRIVATE_DYNAMIC (MMsgComposerExtension))
@@ -122,13 +150,13 @@ msg_text_cb (GObject *source_object,
     if (error) {
         g_warning("Error getting content: %s", error->message);
         g_error_free (error);
-        g_free(context);
+        proofread_context_free(context);
         return;
     }
     
     if (!content_hash) {
         g_warning("No content hash returned");
-        g_free(context);
+        proofread_context_free(context);
         return;
     }
 
@@ -157,7 +185,9 @@ msg_text_cb (GObject *source_object,
                 NULL);
                 
             g_error_free(error);
-            g_free(context);
+            g_free(content);
+            e_content_editor_util_free_content_hash(content_hash);
+            proofread_context_free(context);
             return;
         } else if (proofread_text) {
             new_content = g_strdup(proofread_text);
@@ -177,7 +207,9 @@ msg_text_cb (GObject *source_object,
             gtk_dialog_run(GTK_DIALOG(dialog));
             gtk_widget_destroy(dialog);
                 
-            g_free(context);
+            g_free(content);
+            e_content_editor_util_free_content_hash(content_hash);
+            proofread_context_free(context);
             return;
         }
 
@@ -192,7 +224,7 @@ msg_text_cb (GObject *source_object,
     }
 
     e_content_editor_util_free_content_hash (content_hash);
-    g_free(context);
+    proofread_context_free(context);
 }
 
 static void
@@ -213,10 +245,8 @@ action_msg_composer_prompt_cb (GtkAction *action,
     cnt_editor = e_html_editor_get_content_editor (editor);
 
     // Create context to pass to callback
-    struct ProofreadContext *context = g_new(struct ProofreadContext, 1);
-    context->cnt_editor = cnt_editor;
-    context->prompt_id = prompt_id;
-    context->extension = msg_composer_ext;
+    struct ProofreadContext *context = proofread_context_new(
+        cnt_editor, prompt_id, msg_composer_ext);
 
     g_debug("Getting content");
     e_content_editor_get_content (
@@ -250,10 +280,8 @@ run_button_clicked_cb (GtkButton *button,
         cnt_editor = e_html_editor_get_content_editor (editor);
 
         // Create context to pass to callback
-        struct ProofreadContext *context = g_new(struct ProofreadContext, 1);
-        context->cnt_editor = cnt_editor;
-        context->prompt_id = prompt_id;
-        context->extension = msg_composer_ext;
+        struct ProofreadContext *context = proofread_context_new(
+            cnt_editor, prompt_id, msg_composer_ext);
 
         e_content_editor_get_content (
             cnt_editor,

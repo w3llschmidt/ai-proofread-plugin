@@ -15,6 +15,7 @@ add_library(ai-proofread-plugin MODULE
 target_include_directories(ai-proofread-plugin PRIVATE
 	${EVOLUTION_INCLUDE_DIRS}
 	${EVOLUTION_SHELL_INCLUDE_DIRS}
+	${EVOLUTION_MAIL_INCLUDE_DIRS}
 	${LIBSOUP_INCLUDE_DIRS}
 	${CMAKE_BINARY_DIR}
 	${CMAKE_SOURCE_DIR}/src)
